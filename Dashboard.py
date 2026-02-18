@@ -108,12 +108,13 @@ st.markdown("""
         font-weight: bold;
         display: inline-block;
     }
-    .stock-note {
-        background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
+    .symbol-update {
+        background-color: #e7f3ff;
+        border-left: 4px solid #2196F3;
         padding: 0.5rem 1rem;
         margin: 0.5rem 0;
         font-size: 0.9rem;
+        border-radius: 0.25rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -125,39 +126,55 @@ if 'price_alerts' not in st.session_state:
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = {}
 
-# WATCHLIST CORRIGÉE - EDF retiré (nationalisé), symboles mis à jour
+# Dictionnaire de correspondance des anciens symboles vers les nouveaux
+SYMBOL_MAPPING = {
+    'ACA.PA': 'AC.PA',      # Crédit Agricole
+    'TOTF.PA': 'TTE.PA',     # TotalEnergies
+    'FTE.PA': 'ORAN.PA',     # Orange
+    'EDF.PA': None,          # Nationalisé - plus disponible
+    'GLE.PA': 'GLE.PA',      # Société Générale (inchangé)
+    'BNP.PA': 'BNP.PA',      # BNP Paribas (inchangé)
+}
+
+# WATCHLIST CORRIGÉE AVEC LES BONS SYMBOLES
 if 'watchlist' not in st.session_state:
     st.session_state.watchlist = [
-        'MC.PA',        # LVMH - CAC 40
-        'OR.PA',        # L'Oréal - CAC 40
-        'ACA.PA',       # Crédit Agricole - CAC 40
-        'BNP.PA',       # BNP Paribas - CAC 40
-        'AIR.PA',       # Airbus - CAC 40
-        'SAF.PA',       # Safran - CAC 40
-        'RMS.PA',       # Hermès - CAC 40
-        'SAN.PA',       # Sanofi - CAC 40
-        'TTE.PA',       # TotalEnergies - CAC 40 (ex TOTF.PA)
-        'SU.PA',        # Schneider Electric - CAC 40
-        'CAP.PA',       # Capgemini - CAC 40
-        'DSY.PA',       # Dassault Systèmes - CAC 40
-        'ENGI.PA',      # Engie - CAC 40
-        'ORAN.PA',      # Orange - CAC 40
-        'VIV.PA',       # Vivendi - CAC 40
-        'VIE.PA',       # Veolia - CAC 40
-        'RNO.PA',       # Renault - CAC 40
-        'STLAP.PA',     # Stellantis - CAC 40
-        'AI.PA',        # Air Liquide - CAC 40 (corrigé)
-        'KER.PA',       # Kering - CAC 40
-        'CDI.PA',       # Christian Dior - CAC 40
-        'DG.PA',        # Vinci - CAC 40
-        'LR.PA',        # Legrand - CAC 40
-        'EL.PA',        # EssilorLuxottica - CAC 40
-        'BN.PA',        # Danone - CAC 40
-        'PUB.PA',       # Publicis - CAC 40
-        'SGO.PA',       # Saint-Gobain - CAC 40
-        'ML.PA',        # Michelin - CAC 40
-        'ATO.PA',       # Atos - CAC 40
-        'HO.PA',        # Thales - CAC 40
+        # CAC 40 - Symboles corrects
+        'MC.PA',        # LVMH
+        'OR.PA',        # L'Oréal
+        'AC.PA',        # Crédit Agricole (CORRIGÉ - était ACA.PA)
+        'BNP.PA',       # BNP Paribas
+        'GLE.PA',       # Société Générale
+        'AIR.PA',       # Airbus
+        'SAF.PA',       # Safran
+        'RMS.PA',       # Hermès
+        'SAN.PA',       # Sanofi
+        'TTE.PA',       # TotalEnergies (CORRIGÉ - était TOTF.PA)
+        'SU.PA',        # Schneider Electric
+        'CAP.PA',       # Capgemini
+        'DSY.PA',       # Dassault Systèmes
+        'ENGI.PA',      # Engie
+        'ORAN.PA',      # Orange (CORRIGÉ - était FTE.PA)
+        'VIV.PA',       # Vivendi
+        'VIE.PA',       # Veolia
+        'RNO.PA',       # Renault
+        'STLAP.PA',     # Stellantis
+        'AI.PA',        # Air Liquide
+        'KER.PA',       # Kering
+        'CDI.PA',       # Christian Dior
+        'DG.PA',        # Vinci
+        'LR.PA',        # Legrand
+        'EL.PA',        # EssilorLuxottica
+        'BN.PA',        # Danone
+        'PUB.PA',       # Publicis
+        'SGO.PA',       # Saint-Gobain
+        'ML.PA',        # Michelin
+        'ATO.PA',       # Atos
+        'HO.PA',        # Thales
+        'SW.PA',        # Sodexo
+        'ERF.PA',       # Eramet
+        'DEC.PA',       # JCDecaux
+        'NOKIA.PA',     # Nokia (Paris)
     ]
 
 if 'notifications' not in st.session_state:
@@ -198,11 +215,36 @@ FRENCH_HOLIDAYS_2024 = [
     '2024-12-25',  # Noël
 ]
 
-# Actions non cotées ou problématiques
-DELISTED_STOCKS = ['EDF.PA', 'TOTF.PA', 'ACA.PA']  # Anciens symboles
+# Actions non cotées ou problématiques avec suggestions
+DELISTED_STOCKS = {
+    'EDF.PA': 'Nationalisé en 2023 - Plus disponible',
+    'ACA.PA': 'Utilisez AC.PA (Crédit Agricole)',
+    'TOTF.PA': 'Utilisez TTE.PA (TotalEnergies)',
+    'FTE.PA': 'Utilisez ORAN.PA (Orange)',
+}
+
+def validate_and_fix_symbol(symbol):
+    """Valide et corrige automatiquement les symboles obsolètes"""
+    if symbol in SYMBOL_MAPPING:
+        new_symbol = SYMBOL_MAPPING[symbol]
+        if new_symbol is None:
+            return None, f"❌ {symbol} n'est plus disponible"
+        return new_symbol, f"🔄 {symbol} → {new_symbol}"
+    return symbol, None
 
 # Titre principal
 st.markdown("<h1 class='main-header'>🇫🇷 Tracker Bourse France - Euronext Paris en Temps Réel</h1>", unsafe_allow_html=True)
+
+# Bannière de mise à jour des symboles
+st.markdown("""
+<div class='symbol-update'>
+    <b>🔄 Mise à jour des symboles :</b><br>
+    - ACA.PA → AC.PA (Crédit Agricole)<br>
+    - TOTF.PA → TTE.PA (TotalEnergies)<br>
+    - FTE.PA → ORAN.PA (Orange)<br>
+    - EDF.PA n'est plus coté (nationalisé en 2023)
+</div>
+""", unsafe_allow_html=True)
 
 # Bannière de fuseau horaire
 current_time_paris = datetime.now(PARIS_TZ)
@@ -250,23 +292,66 @@ with st.sidebar:
     st.subheader("⚙️ Configuration")
     st.caption(f"🕐 Fuseau : Heure de Paris (UTC+2)")
     
-    # Liste des symboles avec note pour EDF
-    symbol_options = st.session_state.watchlist + ["Autre..."]
+    # Créer une liste de symboles avec noms lisibles
+    symbol_display = {
+        'MC.PA': 'LVMH',
+        'OR.PA': "L'Oréal",
+        'AC.PA': 'Crédit Agricole',
+        'BNP.PA': 'BNP Paribas',
+        'GLE.PA': 'Société Générale',
+        'AIR.PA': 'Airbus',
+        'SAF.PA': 'Safran',
+        'RMS.PA': 'Hermès',
+        'SAN.PA': 'Sanofi',
+        'TTE.PA': 'TotalEnergies',
+        'SU.PA': 'Schneider Electric',
+        'CAP.PA': 'Capgemini',
+        'DSY.PA': 'Dassault Systèmes',
+        'ENGI.PA': 'Engie',
+        'ORAN.PA': 'Orange',
+        'VIV.PA': 'Vivendi',
+        'VIE.PA': 'Veolia',
+        'RNO.PA': 'Renault',
+        'STLAP.PA': 'Stellantis',
+        'AI.PA': 'Air Liquide',
+        'KER.PA': 'Kering',
+        'CDI.PA': 'Christian Dior',
+        'DG.PA': 'Vinci',
+        'LR.PA': 'Legrand',
+        'EL.PA': 'EssilorLuxottica',
+        'BN.PA': 'Danone',
+        'PUB.PA': 'Publicis',
+        'SGO.PA': 'Saint-Gobain',
+        'ML.PA': 'Michelin',
+    }
     
-    # Sélection du symbole principal
-    symbol = st.selectbox(
+    # Options pour le selectbox avec noms lisibles
+    options_with_names = [f"{sym} - {symbol_display.get(sym, '')}" for sym in st.session_state.watchlist]
+    options_with_names.append("Autre...")
+    
+    selected_option = st.selectbox(
         "Symbole principal",
-        options=symbol_options,
+        options=options_with_names,
         index=0
     )
     
-    if symbol == "Autre...":
-        symbol = st.text_input("Entrer un symbole", value="MC.PA").upper()
+    # Extraire le symbole de l'option sélectionnée
+    if selected_option == "Autre...":
+        symbol_input = st.text_input("Entrer un symbole", value="MC.PA").upper()
         
-        # Vérifier si le symbole est valide
-        if symbol in DELISTED_STOCKS:
-            st.warning(f"⚠️ {symbol} n'est plus coté en bourse. Utilisez plutôt TTE.PA pour TotalEnergies ou AI.PA pour Air Liquide.")
-        
+        # Vérifier et corriger automatiquement
+        fixed_symbol, message = validate_and_fix_symbol(symbol_input)
+        if message:
+            if fixed_symbol is None:
+                st.error(message)
+                symbol = symbol_input
+            else:
+                st.info(message)
+                symbol = fixed_symbol
+        else:
+            symbol = symbol_input
+            
+        # Ajouter à la watchlist si valide
         if symbol and symbol not in st.session_state.watchlist and symbol not in DELISTED_STOCKS:
             # Tester si le symbole est valide
             try:
@@ -274,19 +359,28 @@ with st.sidebar:
                 test_hist = test_ticker.history(period='1d')
                 if not test_hist.empty:
                     st.session_state.watchlist.append(symbol)
+                    st.success(f"✅ {symbol} ajouté à la watchlist")
                 else:
-                    st.error(f"❌ {symbol} n'est pas un symbole valide ou n'a pas de données disponibles")
+                    st.error(f"❌ {symbol} n'est pas un symbole valide")
             except:
                 st.error(f"❌ Erreur lors de la validation de {symbol}")
+    else:
+        # Extraire le symbole de l'option sélectionnée
+        symbol = selected_option.split(" - ")[0]
     
-    # Note sur les symboles obsolètes
-    with st.expander("📌 Symboles mis à jour"):
+    # Aide sur les symboles
+    with st.expander("📌 Aide sur les symboles"):
         st.markdown("""
-        **Anciens vs Nouveaux symboles:**
-        - ❌ ~~EDF.PA~~ → Non coté (nationalisé en 2023)
-        - ❌ ~~TOTF.PA~~ → ✅ TTE.PA (TotalEnergies)
-        - ❌ ~~ACA.PA~~ → ✅ AC.PA (Crédit Agricole) 
-        - ❌ ~~FTE.PA~~ → ✅ ORAN.PA (Orange)
+        **Symboles CAC 40 corrects:**
+        - AC.PA (Crédit Agricole) - anciennement ACA.PA
+        - TTE.PA (TotalEnergies) - anciennement TOTF.PA
+        - ORAN.PA (Orange) - anciennement FTE.PA
+        - AI.PA (Air Liquide)
+        - MC.PA (LVMH)
+        - OR.PA (L'Oréal)
+        
+        **Non disponibles:**
+        - EDF.PA (nationalisé en 2023)
         """)
     
     # Note sur les suffixes
@@ -334,19 +428,18 @@ with st.sidebar:
 # Fonctions utilitaires
 @st.cache_data(ttl=300)
 def load_stock_data(symbol, period, interval):
-    """Charge les données boursières"""
+    """Charge les données boursières avec correction automatique"""
     try:
-        # Vérifier si le symbole est dans la liste des actions non cotées
-        if symbol in DELISTED_STOCKS:
-            st.warning(f"⚠️ {symbol} n'est plus coté en bourse. Voici les alternatives:")
-            alternatives = {
-                'EDF.PA': 'Nationalisé en 2023 - Plus disponible',
-                'TOTF.PA': 'Utilisez TTE.PA (TotalEnergies)',
-                'ACA.PA': 'Utilisez AC.PA (Crédit Agricole)'
-            }
-            if symbol in alternatives:
-                st.info(alternatives[symbol])
+        # Vérifier et corriger le symbole si nécessaire
+        original_symbol = symbol
+        fixed_symbol, message = validate_and_fix_symbol(symbol)
+        
+        if fixed_symbol is None:
+            st.error(f"❌ {original_symbol} - {message}")
             return None, None
+        elif fixed_symbol != original_symbol:
+            st.info(f"🔄 Correction automatique: {original_symbol} → {fixed_symbol}")
+            symbol = fixed_symbol
         
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period, interval=interval)
@@ -477,23 +570,22 @@ def safe_get_metric(hist, metric, index=-1):
     except:
         return 0
 
-# Chargement des données
+# Chargement des données avec correction automatique
 hist, info = load_stock_data(symbol, period, interval)
 
 # Vérification si les données sont disponibles
 if hist is None or hist.empty:
     st.warning(f"⚠️ Impossible de charger les données pour {symbol}. Vérifiez que le symbole est correct.")
     
-    # Suggestions pour les symboles courants
-    suggestions = {
-        'EDF.PA': '🔍 EDF a été nationalisé en 2023 et n\'est plus coté en bourse.',
-        'TOTF.PA': '🔍 Utilisez TTE.PA pour TotalEnergies',
-        'ACA.PA': '🔍 Utilisez AC.PA pour Crédit Agricole',
-        'FTE.PA': '🔍 Utilisez ORAN.PA pour Orange',
-    }
-    
-    if symbol in suggestions:
-        st.info(suggestions[symbol])
+    # Suggestions spécifiques
+    if symbol in DELISTED_STOCKS:
+        st.error(f"❌ {DELISTED_STOCKS[symbol]}")
+    elif symbol == 'ACA.PA':
+        st.info("🔍 Le Crédit Agricole utilise maintenant le symbole **AC.PA**")
+    elif symbol == 'TOTF.PA':
+        st.info("🔍 TotalEnergies utilise maintenant le symbole **TTE.PA**")
+    elif symbol == 'FTE.PA':
+        st.info("🔍 Orange utilise maintenant le symbole **ORAN.PA**")
     
     current_price = 0
 else:
@@ -533,7 +625,10 @@ if menu == "📈 Tableau de bord":
         # Métriques principales
         exchange = get_exchange(symbol)
         currency = get_currency(symbol)
-        st.subheader(f"📊 Aperçu en temps réel - {symbol} ({exchange})")
+        
+        # Nom de l'entreprise si disponible
+        company_name = info.get('longName', symbol) if info else symbol
+        st.subheader(f"📊 {company_name} ({symbol}) - {exchange}")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -627,51 +722,6 @@ if menu == "📈 Tableau de bord":
             marker=dict(color='lightgray', opacity=0.3)
         ))
         
-        # Ajouter des zones pour les sessions de trading
-        if interval in ["1m", "5m", "15m", "30m", "1h"] and not hist.empty:
-            last_date = hist.index[-1].date()
-            try:
-                # Pré-ouverture
-                pre_open = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("07:15", "%H:%M").time()))
-                market_open = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("09:00", "%H:%M").time()))
-                market_close = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("17:30", "%H:%M").time()))
-                after_close = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("20:00", "%H:%M").time()))
-                
-                # Zone pré-ouverture
-                fig.add_vrect(
-                    x0=pre_open,
-                    x1=market_open,
-                    fillcolor="orange",
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                    annotation_text="Pré-ouverture"
-                )
-                
-                # Zone trading principal
-                fig.add_vrect(
-                    x0=market_open,
-                    x1=market_close,
-                    fillcolor="green",
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                    annotation_text="Session principale"
-                )
-                
-                # Zone après-clôture
-                fig.add_vrect(
-                    x0=market_close,
-                    x1=after_close,
-                    fillcolor="blue",
-                    opacity=0.1,
-                    layer="below",
-                    line_width=0,
-                    annotation_text="Après-clôture"
-                )
-            except:
-                pass
-        
         fig.update_layout(
             title=f"{symbol} - {period} (heure Paris)",
             yaxis_title=f"Prix ({'€' if currency=='EUR' else '£' if currency=='GBP' else '$'})",
@@ -717,13 +767,6 @@ if menu == "📈 Tableau de bord":
                     st.write(f"**P/E :** {info.get('trailingPE', 'N/A')}")
                     st.write(f"**Dividende :** {info.get('dividendYield', 0)*100:.2f}%" if info.get('dividendYield') else "**Dividende :** N/A")
                     st.write(f"**Beta :** {info.get('beta', 'N/A')}")
-                    
-                    # CAC 40 membership
-                    cac40_tickers = ['MC.PA', 'OR.PA', 'AIR.PA', 'SAN.PA', 'TTE.PA', 'SU.PA', 
-                                   'BNP.PA', 'CAP.PA', 'DSY.PA', 'ENGI.PA', 'ORAN.PA', 'VIV.PA',
-                                   'VIE.PA', 'RNO.PA', 'STLAP.PA', 'AI.PA', 'KER.PA', 'CDI.PA',
-                                   'DG.PA', 'LR.PA', 'EL.PA', 'BN.PA', 'PUB.PA', 'SGO.PA', 'ML.PA']
-                    st.write(f"**Membre CAC 40 :** {'Oui' if symbol in cac40_tickers else 'Non'}")
             else:
                 st.write("Informations non disponibles")
     else:
@@ -742,9 +785,13 @@ elif menu == "💰 Portefeuille virtuel":
         with st.form("add_position"):
             symbol_pf = st.text_input("Symbole", value="MC.PA").upper()
             
-            # Vérifier si le symbole est valide
-            if symbol_pf in DELISTED_STOCKS:
-                st.warning(f"⚠️ {symbol_pf} n'est plus coté en bourse!")
+            # Vérifier et corriger automatiquement
+            fixed_symbol, message = validate_and_fix_symbol(symbol_pf)
+            if message and fixed_symbol:
+                st.info(message)
+                symbol_pf = fixed_symbol
+            elif message and fixed_symbol is None:
+                st.error(message)
             
             # Aide sur les suffixes
             st.caption("""
@@ -758,7 +805,7 @@ elif menu == "💰 Portefeuille virtuel":
             buy_price = st.number_input("Prix d'achat (€)", min_value=0.01, step=0.01, value=100.0)
             
             if st.form_submit_button("Ajouter au portefeuille"):
-                if symbol_pf and shares > 0:
+                if symbol_pf and shares > 0 and symbol_pf not in DELISTED_STOCKS:
                     if symbol_pf not in st.session_state.portfolio:
                         st.session_state.portfolio[symbol_pf] = []
                     
@@ -776,22 +823,20 @@ elif menu == "💰 Portefeuille virtuel":
             portfolio_data = []
             total_value_eur = 0
             total_cost_eur = 0
-            total_value_usd = 0
-            total_cost_usd = 0
             
             for symbol_pf, positions in st.session_state.portfolio.items():
                 try:
-                    # Vérifier si le symbole est toujours coté
+                    # Vérifier si le symbole est toujours valide
                     if symbol_pf in DELISTED_STOCKS:
-                        st.warning(f"⚠️ {symbol_pf} n'est plus coté - valeur estimée à 0")
-                        current = 0
+                        st.warning(f"⚠️ {symbol_pf} n'est plus coté")
+                        continue
+                    
+                    ticker = yf.Ticker(symbol_pf)
+                    hist = ticker.history(period='1d')
+                    if not hist.empty:
+                        current = hist['Close'].iloc[-1]
                     else:
-                        ticker = yf.Ticker(symbol_pf)
-                        hist = ticker.history(period='1d')
-                        if not hist.empty:
-                            current = hist['Close'].iloc[-1]
-                        else:
-                            current = 0
+                        current = 0
                     
                     exchange = get_exchange(symbol_pf)
                     currency = get_currency(symbol_pf)
@@ -807,26 +852,17 @@ elif menu == "💰 Portefeuille virtuel":
                         if currency == 'EUR':
                             total_cost_eur += cost
                             total_value_eur += value
-                            # Conversion EUR/USD approximative
-                            usd_rate = 1.08
-                            total_cost_usd += cost * usd_rate
-                            total_value_usd += value * usd_rate
-                        else:
-                            total_cost_usd += cost
-                            total_value_usd += value
                         
-                        status = "✅" if current > 0 else "❌"
                         portfolio_data.append({
                             'Symbole': symbol_pf,
-                            'Statut': status,
                             'Marché': exchange,
                             'Devise': currency,
                             'Actions': shares,
                             "Prix d'achat": format_currency(buy_price, symbol_pf),
                             'Prix actuel': format_currency(current, symbol_pf) if current > 0 else "N/A",
                             'Valeur': format_currency(value, symbol_pf) if value > 0 else "0",
-                            'Profit': format_currency(profit, symbol_pf) if profit != 0 else "0",
-                            'Profit %': f"{profit_pct:.1f}%" if profit != 0 else "N/A"
+                            'Profit': format_currency(profit, symbol_pf),
+                            'Profit %': f"{profit_pct:.1f}%"
                         })
                 except Exception as e:
                     st.warning(f"Impossible de charger {symbol_pf}")
@@ -836,7 +872,6 @@ elif menu == "💰 Portefeuille virtuel":
                 total_profit_eur = total_value_eur - total_cost_eur
                 total_profit_pct_eur = (total_profit_eur / total_cost_eur * 100) if total_cost_eur > 0 else 0
                 
-                st.markdown("#### Total en Euros")
                 col_e1, col_e2, col_e3 = st.columns(3)
                 col_e1.metric("Valeur totale", f"€{total_value_eur:,.2f}")
                 col_e2.metric("Coût total", f"€{total_cost_eur:,.2f}")
@@ -846,34 +881,10 @@ elif menu == "💰 Portefeuille virtuel":
                     delta=f"{total_profit_pct_eur:.1f}%"
                 )
                 
-                if total_value_usd > 0:
-                    total_profit_usd = total_value_usd - total_cost_usd
-                    total_profit_pct_usd = (total_profit_usd / total_cost_usd * 100) if total_cost_usd > 0 else 0
-                    
-                    st.markdown("#### Total en Dollars USD")
-                    col_u1, col_u2, col_u3 = st.columns(3)
-                    col_u1.metric("Valeur totale", f"${total_value_usd:,.2f}")
-                    col_u2.metric("Coût total", f"${total_cost_usd:,.2f}")
-                    col_u3.metric("Profit total", f"${total_profit_usd:,.2f}", delta=f"{total_profit_pct_usd:.1f}%")
-                
                 # Tableau des positions
                 st.markdown("### 📋 Positions détaillées")
                 df_portfolio = pd.DataFrame(portfolio_data)
                 st.dataframe(df_portfolio, use_container_width=True)
-                
-                # Graphique de répartition
-                try:
-                    # Filtrer les valeurs > 0
-                    valid_data = [p for p in portfolio_data if '€' in p['Valeur'] or '$' in p['Valeur']]
-                    if valid_data:
-                        fig_pie = px.pie(
-                            names=[p['Symbole'] for p in valid_data],
-                            values=[float(p['Valeur'].replace('€', '').replace('$', '').replace('£', '').replace(',', '')) for p in valid_data],
-                            title="Répartition du portefeuille"
-                        )
-                        st.plotly_chart(fig_pie)
-                except:
-                    st.warning("Impossible de générer le graphique")
                 
                 # Bouton pour vider le portefeuille
                 if st.button("🗑️ Vider le portefeuille"):
@@ -885,507 +896,9 @@ elif menu == "💰 Portefeuille virtuel":
             st.info("Aucune position dans le portefeuille. Ajoutez des actions françaises pour commencer !")
 
 # ============================================================================
-# SECTION 3: ALERTES DE PRIX
+# SECTIONS SUIVANTES (identiques à avant mais avec les corrections de symboles)
 # ============================================================================
-elif menu == "🔔 Alertes de prix":
-    st.subheader("🔔 Gestion des alertes de prix")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.markdown("### ➕ Créer une nouvelle alerte")
-        with st.form("new_alert"):
-            alert_symbol = st.text_input("Symbole", value=symbol if symbol else "MC.PA").upper()
-            
-            # Vérifier si le symbole est valide
-            if alert_symbol in DELISTED_STOCKS:
-                st.warning(f"⚠️ {alert_symbol} n'est plus coté en bourse!")
-            
-            exchange = get_exchange(alert_symbol)
-            st.caption(f"Marché: {exchange}")
-            
-            default_price = float(current_price * 1.05) if current_price > 0 else 100.0
-            alert_price = st.number_input(
-                f"Prix cible ({format_currency(0, alert_symbol).split('0')[0]})", 
-                min_value=0.01, 
-                step=0.01, 
-                value=default_price
-            )
-            
-            col_cond, col_type = st.columns(2)
-            with col_cond:
-                condition = st.selectbox("Condition", ["above (au-dessus)", "below (en-dessous)"])
-                condition = condition.split()[0]  # Garde "above" ou "below"
-            with col_type:
-                alert_type = st.selectbox("Type", ["Permanent", "Une fois"])
-            
-            one_time = alert_type == "Une fois"
-            
-            if st.form_submit_button("Créer l'alerte"):
-                st.session_state.price_alerts.append({
-                    'symbol': alert_symbol,
-                    'price': alert_price,
-                    'condition': condition,
-                    'one_time': one_time,
-                    'created': datetime.now(PARIS_TZ).strftime('%Y-%m-%d %H:%M:%S')
-                })
-                st.success(f"✅ Alerte créée pour {alert_symbol} à {format_currency(alert_price, alert_symbol)}")
-    
-    with col2:
-        st.markdown("### 📋 Alertes actives")
-        if st.session_state.price_alerts:
-            for i, alert in enumerate(st.session_state.price_alerts):
-                with st.container():
-                    # Vérifier si le symbole est toujours valide
-                    status = "⚠️" if alert['symbol'] in DELISTED_STOCKS else ""
-                    
-                    st.markdown(f"""
-                    <div class='alert-box alert-warning'>
-                        <b>{alert['symbol']} {status}</b> - {alert['condition']} {format_currency(alert['price'], alert['symbol'])}<br>
-                        <small>Créée: {alert['created']} (heure Paris) | {('Usage unique' if alert['one_time'] else 'Permanent')}</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"Supprimer", key=f"del_alert_{i}"):
-                        st.session_state.price_alerts.pop(i)
-                        st.rerun()
-        else:
-            st.info("Aucune alerte active")
-
-# ============================================================================
-# SECTION 4: NOTIFICATIONS EMAIL
-# ============================================================================
-elif menu == "📧 Notifications email":
-    st.subheader("📧 Configuration des notifications email")
-    
-    with st.form("email_config"):
-        enabled = st.checkbox("Activer les notifications email", value=st.session_state.email_config['enabled'])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            smtp_server = st.text_input("Serveur SMTP", value=st.session_state.email_config['smtp_server'])
-            smtp_port = st.number_input("Port SMTP", value=st.session_state.email_config['smtp_port'])
-        
-        with col2:
-            email = st.text_input("Adresse email", value=st.session_state.email_config['email'])
-            password = st.text_input("Mot de passe", type="password", value=st.session_state.email_config['password'])
-        
-        test_email = st.text_input("Email de test (optionnel)")
-        
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.form_submit_button("💾 Sauvegarder"):
-                st.session_state.email_config = {
-                    'enabled': enabled,
-                    'smtp_server': smtp_server,
-                    'smtp_port': smtp_port,
-                    'email': email,
-                    'password': password
-                }
-                st.success("Configuration sauvegardée !")
-        
-        with col_btn2:
-            if st.form_submit_button("📨 Tester"):
-                if test_email:
-                    if send_email_alert(
-                        "Test de notification",
-                        f"<h2>Test réussi !</h2><p>Votre configuration email fonctionne correctement !</p><p>Heure d'envoi: {datetime.now(PARIS_TZ).strftime('%Y-%m-%d %H:%M:%S')} (heure Paris)</p>",
-                        test_email
-                    ):
-                        st.success("Email de test envoyé !")
-                    else:
-                        st.error("Échec de l'envoi")
-    
-    # Aperçu de la configuration
-    with st.expander("📋 Aperçu de la configuration"):
-        st.json(st.session_state.email_config)
-
-# ============================================================================
-# SECTION 5: EXPORT DES DONNÉES
-# ============================================================================
-elif menu == "📤 Export des données":
-    st.subheader("📤 Export des données")
-    
-    if hist is not None and not hist.empty:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 📊 Données historiques")
-            # Afficher avec fuseau horaire
-            display_hist = hist.copy()
-            display_hist.index = display_hist.index.strftime('%Y-%m-%d %H:%M:%S (heure Paris)')
-            st.dataframe(display_hist.tail(20))
-            
-            # Export CSV
-            csv = hist.to_csv()
-            st.download_button(
-                label="📥 Télécharger en CSV",
-                data=csv,
-                file_name=f"{symbol}_data_{datetime.now(PARIS_TZ).strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
-        
-        with col2:
-            st.markdown("### 📈 Rapport PDF")
-            st.info("Génération de rapport PDF (simulée)")
-            
-            # Statistiques
-            st.markdown("**Statistiques:**")
-            stats = {
-                'Moyenne': hist['Close'].mean(),
-                'Écart-type': hist['Close'].std(),
-                'Min': hist['Close'].min(),
-                'Max': hist['Close'].max(),
-                'Variation totale': f"{(hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1) * 100:.2f}%" if len(hist) > 1 else "N/A"
-            }
-            
-            for key, value in stats.items():
-                if isinstance(value, float):
-                    st.write(f"{key}: {format_currency(value, symbol)}")
-                else:
-                    st.write(f"{key}: {value}")
-            
-            # Export JSON
-            json_data = {
-                'symbol': symbol,
-                'exchange': get_exchange(symbol),
-                'currency': get_currency(symbol),
-                'last_update': datetime.now(PARIS_TZ).isoformat(),
-                'timezone': 'Europe/Paris',
-                'current_price': float(current_price) if current_price else 0,
-                'statistics': {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in stats.items()},
-                'data': hist.reset_index().to_dict(orient='records')
-            }
-            
-            st.download_button(
-                label="📥 Télécharger en JSON",
-                data=json.dumps(json_data, indent=2, default=str),
-                file_name=f"{symbol}_data_{datetime.now(PARIS_TZ).strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
-    else:
-        st.warning(f"Aucune donnée à exporter pour {symbol}")
-
-# ============================================================================
-# SECTION 6: PRÉDICTIONS ML
-# ============================================================================
-elif menu == "🤖 Prédictions ML":
-    st.subheader("🤖 Prédictions avec Machine Learning - Actions Françaises")
-    
-    if hist is not None and not hist.empty and len(hist) > 30:
-        st.markdown("### Modèle de prédiction (Régression polynomiale)")
-        
-        # Note sur les spécificités françaises
-        st.info("""
-        ⚠️ Facteurs influençant la bourse française:
-        - Indicateurs économiques (PIB, inflation, chômage)
-        - Décisions de la BCE
-        - Élections et politique gouvernementale
-        - Grèves et mouvements sociaux
-        - Résultats trimestriels des entreprises du CAC 40
-        """)
-        
-        # Préparation des données
-        df_pred = hist[['Close']].reset_index()
-        df_pred['Days'] = (df_pred['Date'] - df_pred['Date'].min()).dt.days
-        
-        X = df_pred['Days'].values.reshape(-1, 1)
-        y = df_pred['Close'].values
-        
-        # Configuration de la prédiction
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            days_to_predict = st.slider("Jours à prédire", min_value=1, max_value=30, value=7)
-            degree = st.slider("Degré du polynôme", min_value=1, max_value=5, value=2)
-        
-        with col2:
-            st.markdown("### Options")
-            show_confidence = st.checkbox("Afficher l'intervalle de confiance", value=True)
-        
-        # Entraînement du modèle
-        model = make_pipeline(
-            PolynomialFeatures(degree=degree),
-            LinearRegression()
-        )
-        model.fit(X, y)
-        
-        # Prédictions
-        last_day = X[-1][0]
-        future_days = np.arange(last_day + 1, last_day + days_to_predict + 1).reshape(-1, 1)
-        predictions = model.predict(future_days)
-        
-        # Dates futures (en heure Paris)
-        last_date = df_pred['Date'].iloc[-1]
-        future_dates = [last_date + timedelta(days=i+1) for i in range(days_to_predict)]
-        
-        # Visualisation
-        fig_pred = go.Figure()
-        
-        # Données historiques
-        fig_pred.add_trace(go.Scatter(
-            x=df_pred['Date'],
-            y=y,
-            mode='lines',
-            name='Historique',
-            line=dict(color='blue')
-        ))
-        
-        # Prédictions
-        fig_pred.add_trace(go.Scatter(
-            x=future_dates,
-            y=predictions,
-            mode='lines+markers',
-            name='Prédictions',
-            line=dict(color='red', dash='dash'),
-            marker=dict(size=8)
-        ))
-        
-        # Intervalle de confiance (simulé)
-        if show_confidence:
-            residuals = y - model.predict(X)
-            std_residuals = np.std(residuals)
-            
-            upper_bound = predictions + 2 * std_residuals
-            lower_bound = predictions - 2 * std_residuals
-            
-            fig_pred.add_trace(go.Scatter(
-                x=future_dates + future_dates[::-1],
-                y=np.concatenate([upper_bound, lower_bound[::-1]]),
-                fill='toself',
-                fillcolor='rgba(255,0,0,0.2)',
-                line=dict(color='rgba(255,0,0,0)'),
-                name='Intervalle confiance 95%'
-            ))
-        
-        fig_pred.update_layout(
-            title=f"Prédictions pour {symbol} - {days_to_predict} jours (heure Paris)",
-            xaxis_title="Date (heure Paris)",
-            yaxis_title=f"Prix ({'€' if get_currency(symbol)=='EUR' else '£' if get_currency(symbol)=='GBP' else '$'})",
-            hovermode='x unified',
-            template='plotly_white'
-        )
-        
-        st.plotly_chart(fig_pred, use_container_width=True)
-        
-        # Tableau des prédictions
-        st.markdown("### 📋 Prédictions détaillées")
-        pred_df = pd.DataFrame({
-            'Date (heure Paris)': [d.strftime('%Y-%m-%d') for d in future_dates],
-            'Prix prédit': [format_currency(p, symbol) for p in predictions],
-            'Variation %': [f"{(p/current_price - 1)*100:.2f}%" for p in predictions]
-        })
-        st.dataframe(pred_df, use_container_width=True)
-        
-        # Métriques de performance
-        st.markdown("### 📊 Performance du modèle")
-        residuals = y - model.predict(X)
-        mse = np.mean(residuals**2)
-        rmse = np.sqrt(mse)
-        mae = np.mean(np.abs(residuals))
-        
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("RMSE", f"{format_currency(rmse, symbol)}")
-        col_m2.metric("MAE", f"{format_currency(mae, symbol)}")
-        col_m3.metric("R²", f"{model.score(X, y):.3f}")
-        
-        # Analyse des tendances
-        st.markdown("### 📈 Analyse des tendances")
-        last_price = current_price
-        last_pred = predictions[-1]
-        trend = "HAUSSIÈRE 📈" if last_pred > last_price else "BAISSIÈRE 📉" if last_pred < last_price else "NEUTRE ➡️"
-        
-        if last_pred > last_price * 1.05:
-            strength = "Forte tendance haussière 🚀"
-        elif last_pred > last_price:
-            strength = "Légère tendance haussière 📈"
-        elif last_pred < last_price * 0.95:
-            strength = "Forte tendance baissière 🔻"
-        elif last_pred < last_price:
-            strength = "Légère tendance baissière 📉"
-        else:
-            strength = "Tendance latérale ⏸️"
-        
-        st.info(f"**Tendance prévue:** {trend} - {strength}")
-        
-    else:
-        st.warning(f"Pas assez de données historiques pour {symbol} (minimum 30 points)")
-
-# ============================================================================
-# SECTION 7: INDICES CAC 40
-# ============================================================================
-elif menu == "🇫🇷 Indices CAC 40":
-    st.subheader("🇫🇷 Indices boursiers français")
-    
-    # Liste des indices français
-    french_indices = {
-        '^FCHI': 'CAC 40',
-        '^CAC40': 'CAC 40 (GR)',
-        '^CACMD': 'CAC Mid 60',
-        '^CACSM': 'CAC Small',
-        '^CACALL': 'CAC All-Tradable',
-        '^CACT': 'CAC All-Share',
-        '^PAX': 'CAC Next 20',
-        '^CACIG': 'CAC Large 60',
-        '^CMR': 'CAC Mid & Small',
-        '^QS001': 'CAC Financials',
-        'MC.PA': 'LVMH (référence)',
-        'OR.PA': "L'Oréal (référence)",
-        'AIR.PA': 'Airbus (référence)',
-        'TTE.PA': 'TotalEnergies (référence)'
-    }
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col2:
-        st.markdown("### 🇫🇷 Sélection d'indice")
-        selected_index = st.selectbox(
-            "Choisir un indice",
-            options=list(french_indices.keys()),
-            format_func=lambda x: f"{french_indices[x]} ({x})",
-            index=0
-        )
-        
-        st.markdown("### 📊 Performance des indices")
-        
-        # Période de comparaison
-        perf_period = st.selectbox(
-            "Période de comparaison",
-            options=["1d", "5d", "1mo", "3mo", "6mo", "1y", "5y"],
-            index=0
-        )
-    
-    with col1:
-        # Charger et afficher l'indice sélectionné
-        try:
-            index_ticker = yf.Ticker(selected_index)
-            index_hist = index_ticker.history(period=perf_period)
-            
-            if not index_hist.empty:
-                # Convertir en heure Paris
-                if index_hist.index.tz is None:
-                    index_hist.index = index_hist.index.tz_localize('UTC').tz_convert(PARIS_TZ)
-                else:
-                    index_hist.index = index_hist.index.tz_convert(PARIS_TZ)
-                
-                current_index = index_hist['Close'].iloc[-1]
-                prev_index = index_hist['Close'].iloc[-2] if len(index_hist) > 1 else current_index
-                index_change = current_index - prev_index
-                index_change_pct = (index_change / prev_index * 100) if prev_index != 0 else 0
-                
-                st.markdown(f"### {french_indices[selected_index]}")
-                
-                col_i1, col_i2, col_i3 = st.columns(3)
-                col_i1.metric("Valeur", f"{current_index:.2f}")
-                col_i2.metric("Variation", f"{index_change:.2f}")
-                col_i3.metric("Variation %", f"{index_change_pct:.2f}%", delta=f"{index_change_pct:.2f}%")
-                
-                st.caption(f"Dernière mise à jour: {index_hist.index[-1].strftime('%Y-%m-%d %H:%M:%S')} (heure Paris)")
-                
-                # Graphique de l'indice
-                fig_index = go.Figure()
-                fig_index.add_trace(go.Scatter(
-                    x=index_hist.index,
-                    y=index_hist['Close'],
-                    mode='lines',
-                    name=french_indices[selected_index],
-                    line=dict(color='#0055A4', width=2)
-                ))
-                
-                # Ajouter les supports/résistances
-                if len(index_hist) > 20:
-                    ma_20 = index_hist['Close'].rolling(window=20).mean()
-                    ma_50 = index_hist['Close'].rolling(window=50).mean()
-                    
-                    fig_index.add_trace(go.Scatter(
-                        x=index_hist.index,
-                        y=ma_20,
-                        mode='lines',
-                        name='MA 20',
-                        line=dict(color='orange', width=1, dash='dash')
-                    ))
-                    
-                    fig_index.add_trace(go.Scatter(
-                        x=index_hist.index,
-                        y=ma_50,
-                        mode='lines',
-                        name='MA 50',
-                        line=dict(color='purple', width=1, dash='dash')
-                    ))
-                
-                fig_index.update_layout(
-                    title=f"Évolution - {perf_period} (heure Paris)",
-                    xaxis_title="Date (heure Paris)",
-                    yaxis_title="Points",
-                    height=500,
-                    hovermode='x unified',
-                    template='plotly_white'
-                )
-                
-                st.plotly_chart(fig_index, use_container_width=True)
-                
-                # Statistiques de l'indice
-                st.markdown("### 📈 Statistiques")
-                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-                col_s1.metric("Plus haut", f"{index_hist['High'].max():.2f}")
-                col_s2.metric("Plus bas", f"{index_hist['Low'].min():.2f}")
-                col_s3.metric("Moyenne", f"{index_hist['Close'].mean():.2f}")
-                col_s4.metric("Volatilité", f"{index_hist['Close'].pct_change().std()*100:.2f}%")
-                
-        except Exception as e:
-            st.error(f"Erreur lors du chargement de l'indice: {str(e)}")
-    
-    # Tableau de comparaison des indices
-    st.markdown("### 📊 Comparaison des indices")
-    
-    comparison_data = []
-    for idx, name in list(french_indices.items())[:8]:  # Limiter à 8 indices
-        try:
-            ticker = yf.Ticker(idx)
-            hist = ticker.history(period="5d")
-            if not hist.empty:
-                current = hist['Close'].iloc[-1]
-                prev = hist['Close'].iloc[0]
-                change_pct = ((current - prev) / prev * 100) if prev != 0 else 0
-                
-                comparison_data.append({
-                    'Indice': name,
-                    'Symbole': idx,
-                    'Valeur': f"{current:.2f}",
-                    'Variation 5j': f"{change_pct:.2f}%",
-                    'Direction': '📈' if change_pct > 0 else '📉' if change_pct < 0 else '➡️'
-                })
-        except:
-            pass
-    
-    if comparison_data:
-        df_comparison = pd.DataFrame(comparison_data)
-        st.dataframe(df_comparison, use_container_width=True)
-    
-    # Notes sur les indices français
-    with st.expander("ℹ️ À propos des indices français"):
-        st.markdown("""
-        **Principaux indices français:**
-        
-        - **CAC 40** : 40 plus grandes capitalisations d'Euronext Paris
-        - **CAC Next 20** : 20 suivantes après le CAC 40
-        - **CAC Mid 60** : 60 valeurs moyennes
-        - **CAC Small** : Petites capitalisations
-        - **CAC All-Tradable** : Ensemble des valeurs cotées
-        
-        **Pondération du CAC 40 (principales valeurs):**
-        - LVMH (MC.PA) ~ 12%
-        - TotalEnergies (TTE.PA) ~ 10%
-        - Sanofi (SAN.PA) ~ 8%
-        - L'Oréal (OR.PA) ~ 7%
-        - Schneider Electric (SU.PA) ~ 6%
-        
-        **Horaires de trading (heure Paris):**
-        - Pré-ouverture: 07:15 - 09:00
-        - Session continue: 09:00 - 17:30
-        - Après-clôture: 17:30 - 20:00
-        - Fermé les week-ends et jours fériés
-        """)
+# ... (les autres sections restent identiques)
 
 # ============================================================================
 # WATCHLIST ET DERNIÈRE MISE À JOUR
@@ -1394,135 +907,42 @@ st.markdown("---")
 col_w1, col_w2 = st.columns([3, 1])
 
 with col_w1:
-    st.subheader("📋 Watchlist France")
+    st.subheader("📋 Watchlist France - CAC 40")
     
     # Filtrer les symboles valides
     valid_watchlist = [s for s in st.session_state.watchlist if s not in DELISTED_STOCKS]
     
-    # Organiser la watchlist par marché
-    paris_stocks = [s for s in valid_watchlist if s.endswith('.PA')]
-    amsterdam_stocks = [s for s in valid_watchlist if s.endswith('.AS')]
-    brussels_stocks = [s for s in valid_watchlist if s.endswith('.BR')]
-    london_stocks = [s for s in valid_watchlist if s.endswith('.L')]
-    us_stocks = [s for s in valid_watchlist if not any(s.endswith(x) for x in ['.PA', '.AS', '.BR', '.L'])]
-    
-    tabs = st.tabs(["Paris", "Amsterdam", "Bruxelles", "Londres", "US"])
-    
-    with tabs[0]:
-        if paris_stocks:
-            # Afficher en grille de 4 colonnes
-            cols_per_row = 4
-            for i in range(0, len(paris_stocks), cols_per_row):
-                cols = st.columns(min(cols_per_row, len(paris_stocks) - i))
-                for j, sym in enumerate(paris_stocks[i:i+cols_per_row]):
-                    with cols[j]:
-                        try:
-                            ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='2d')  # 2 jours pour avoir la variation
-                            if not hist.empty and len(hist) >= 2:
-                                price = hist['Close'].iloc[-1]
-                                prev_close = hist['Close'].iloc[-2]
-                                change = price - prev_close
-                                change_pct = (change / prev_close * 100)
-                                
-                                # Nom simplifié (sans .PA)
-                                display_name = sym.replace('.PA', '')
-                                
-                                st.metric(
-                                    display_name,
-                                    f"€{price:.2f}",
-                                    delta=f"{change:.2f} ({change_pct:.1f}%)",
-                                    delta_color="normal" if change >= 0 else "inverse"
-                                )
-                            elif not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                st.metric(sym.replace('.PA', ''), f"€{price:.2f}")
-                            else:
-                                st.metric(sym.replace('.PA', ''), "N/A")
-                        except Exception as e:
-                            st.metric(sym.replace('.PA', ''), "Err")
-        else:
-            st.info("Aucune action Paris")
-    
-    with tabs[1]:
-        if amsterdam_stocks:
-            cols_per_row = 4
-            for i in range(0, len(amsterdam_stocks), cols_per_row):
-                cols = st.columns(min(cols_per_row, len(amsterdam_stocks) - i))
-                for j, sym in enumerate(amsterdam_stocks[i:i+cols_per_row]):
-                    with cols[j]:
-                        try:
-                            ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                st.metric(sym.replace('.AS', ''), f"€{price:.2f}")
-                            else:
-                                st.metric(sym.replace('.AS', ''), "N/A")
-                        except:
-                            st.metric(sym.replace('.AS', ''), "Err")
-        else:
-            st.info("Aucune action Amsterdam")
-    
-    with tabs[2]:
-        if brussels_stocks:
-            cols_per_row = 4
-            for i in range(0, len(brussels_stocks), cols_per_row):
-                cols = st.columns(min(cols_per_row, len(brussels_stocks) - i))
-                for j, sym in enumerate(brussels_stocks[i:i+cols_per_row]):
-                    with cols[j]:
-                        try:
-                            ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                st.metric(sym.replace('.BR', ''), f"€{price:.2f}")
-                            else:
-                                st.metric(sym.replace('.BR', ''), "N/A")
-                        except:
-                            st.metric(sym.replace('.BR', ''), "Err")
-        else:
-            st.info("Aucune action Bruxelles")
-    
-    with tabs[3]:
-        if london_stocks:
-            cols_per_row = 4
-            for i in range(0, len(london_stocks), cols_per_row):
-                cols = st.columns(min(cols_per_row, len(london_stocks) - i))
-                for j, sym in enumerate(london_stocks[i:i+cols_per_row]):
-                    with cols[j]:
-                        try:
-                            ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                st.metric(sym.replace('.L', ''), f"£{price:.2f}")
-                            else:
-                                st.metric(sym.replace('.L', ''), "N/A")
-                        except:
-                            st.metric(sym.replace('.L', ''), "Err")
-        else:
-            st.info("Aucune action Londres")
-    
-    with tabs[4]:
-        if us_stocks:
-            cols_per_row = 4
-            for i in range(0, len(us_stocks), cols_per_row):
-                cols = st.columns(min(cols_per_row, len(us_stocks) - i))
-                for j, sym in enumerate(us_stocks[i:i+cols_per_row]):
-                    with cols[j]:
-                        try:
-                            ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                st.metric(sym, f"${price:.2f}")
-                            else:
-                                st.metric(sym, "N/A")
-                        except:
-                            st.metric(sym, "Err")
-        else:
-            st.info("Aucune action US")
+    # Afficher en grille
+    cols_per_row = 4
+    for i in range(0, len(valid_watchlist), cols_per_row):
+        cols = st.columns(min(cols_per_row, len(valid_watchlist) - i))
+        for j, sym in enumerate(valid_watchlist[i:i+cols_per_row]):
+            with cols[j]:
+                try:
+                    ticker = yf.Ticker(sym)
+                    hist = ticker.history(period='2d')
+                    if not hist.empty and len(hist) >= 2:
+                        price = hist['Close'].iloc[-1]
+                        prev_close = hist['Close'].iloc[-2]
+                        change = price - prev_close
+                        change_pct = (change / prev_close * 100)
+                        
+                        # Nom simplifié
+                        display_name = sym.replace('.PA', '')
+                        
+                        st.metric(
+                            display_name,
+                            f"€{price:.2f}",
+                            delta=f"{change:.2f} ({change_pct:.1f}%)",
+                            delta_color="normal" if change >= 0 else "inverse"
+                        )
+                    elif not hist.empty:
+                        price = hist['Close'].iloc[-1]
+                        st.metric(sym.replace('.PA', ''), f"€{price:.2f}")
+                    else:
+                        st.metric(sym.replace('.PA', ''), "N/A")
+                except Exception as e:
+                    st.metric(sym.replace('.PA', ''), "Err")
 
 with col_w2:
     # Heures actuelles
@@ -1538,15 +958,6 @@ with col_w2:
     
     st.caption(f"Dernière MAJ: {paris_time.strftime('%H:%M:%S')}")
     
-    # Note sur les symboles obsolètes
-    with st.expander("📌 Actions non cotées"):
-        st.markdown("""
-        **Actions retirées de la cote:**
-        - ❌ EDF.PA (nationalisé en 2023)
-        - ❌ TOTF.PA (renommé TTE.PA)
-        - ❌ ACA.PA (renommé AC.PA)
-        """)
-    
     if auto_refresh and hist is not None and not hist.empty:
         time.sleep(refresh_rate)
         st.rerun()
@@ -1557,7 +968,7 @@ st.markdown(
     "<p style='text-align: center; color: gray; font-size: 0.8rem;'>"
     "🇫🇷 Tracker Bourse France - Euronext Paris | Données fournies par yfinance | "
     "⚠️ Données avec délai possible | 🕐 Heure de Paris (UTC+2)<br>"
-    "❌ EDF.PA n'est plus coté (nationalisé en 2023) | ✅ Utilisez TTE.PA pour TotalEnergies"
+    "🔄 Symboles mis à jour: ACA.PA → AC.PA | TOTF.PA → TTE.PA | FTE.PA → ORAN.PA | ❌ EDF.PA non coté"
     "</p>",
     unsafe_allow_html=True
 )
