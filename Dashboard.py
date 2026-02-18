@@ -16,8 +16,6 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import make_pipeline
 import pytz
 import warnings
-from workalendar.europe import France
-import calendar
 warnings.filterwarnings('ignore')
 
 # Configuration de la page
@@ -31,10 +29,6 @@ st.set_page_config(
 # Configuration des fuseaux horaires
 PARIS_TZ = pytz.timezone('Europe/Paris')
 NY_TZ = pytz.timezone('America/New_York')
-LONDON_TZ = pytz.timezone('Europe/London')
-
-# Calendrier des jours fériés français
-french_calendar = France()
 
 # Style CSS personnalisé
 st.markdown("""
@@ -114,12 +108,10 @@ st.markdown("""
         font-weight: bold;
         display: inline-block;
     }
-    .holiday-info {
+    .stock-note {
         background-color: #fff3cd;
-        border: 1px solid #ffeeba;
-        color: #856404;
-        padding: 0.5rem;
-        border-radius: 0.25rem;
+        border-left: 4px solid #ffc107;
+        padding: 0.5rem 1rem;
         margin: 0.5rem 0;
         font-size: 0.9rem;
     }
@@ -133,28 +125,39 @@ if 'price_alerts' not in st.session_state:
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = {}
 
+# WATCHLIST CORRIGÉE - EDF retiré (nationalisé), symboles mis à jour
 if 'watchlist' not in st.session_state:
     st.session_state.watchlist = [
-        'MC.PA',        # LVMH
-        'OR.PA',        # L'Oréal
-        'ACA.PA',       # Crédit Agricole
-        'BNP.PA',       # BNP Paribas
-        'AIR.PA',       # Airbus
-        'SAF.PA',       # Safran
-        'RMS.PA',       # Hermès
-        'SAN.PA',       # Sanofi
-        'TTE.PA',       # TotalEnergies (corrigé de TOTF.PA)
-        'SU.PA',        # Schneider Electric
-        'CAP.PA',       # Capgemini
-        'DSY.PA',       # Dassault Systèmes
-        'EDF.PA',       # EDF
-        'ENGI.PA',      # Engie
-        'ORAN.PA',      # Orange
-        'VIV.PA',       # Vivendi
-        'VIE.PA',       # Veolia
-        'RNO.PA',       # Renault
-        'STLAP.PA',     # Stellantis
-        'AI.PA',        # Air Liquide (corrigé de ACA.PA en double)
+        'MC.PA',        # LVMH - CAC 40
+        'OR.PA',        # L'Oréal - CAC 40
+        'ACA.PA',       # Crédit Agricole - CAC 40
+        'BNP.PA',       # BNP Paribas - CAC 40
+        'AIR.PA',       # Airbus - CAC 40
+        'SAF.PA',       # Safran - CAC 40
+        'RMS.PA',       # Hermès - CAC 40
+        'SAN.PA',       # Sanofi - CAC 40
+        'TTE.PA',       # TotalEnergies - CAC 40 (ex TOTF.PA)
+        'SU.PA',        # Schneider Electric - CAC 40
+        'CAP.PA',       # Capgemini - CAC 40
+        'DSY.PA',       # Dassault Systèmes - CAC 40
+        'ENGI.PA',      # Engie - CAC 40
+        'ORAN.PA',      # Orange - CAC 40
+        'VIV.PA',       # Vivendi - CAC 40
+        'VIE.PA',       # Veolia - CAC 40
+        'RNO.PA',       # Renault - CAC 40
+        'STLAP.PA',     # Stellantis - CAC 40
+        'AI.PA',        # Air Liquide - CAC 40 (corrigé)
+        'KER.PA',       # Kering - CAC 40
+        'CDI.PA',       # Christian Dior - CAC 40
+        'DG.PA',        # Vinci - CAC 40
+        'LR.PA',        # Legrand - CAC 40
+        'EL.PA',        # EssilorLuxottica - CAC 40
+        'BN.PA',        # Danone - CAC 40
+        'PUB.PA',       # Publicis - CAC 40
+        'SGO.PA',       # Saint-Gobain - CAC 40
+        'ML.PA',        # Michelin - CAC 40
+        'ATO.PA',       # Atos - CAC 40
+        'HO.PA',        # Thales - CAC 40
     ]
 
 if 'notifications' not in st.session_state:
@@ -180,42 +183,37 @@ FRENCH_EXCHANGES = {
     '': 'US Listed'
 }
 
-# Fonction pour obtenir les jours fériés de l'année en cours
-def get_french_holidays(year=None):
-    """Retourne la liste des jours fériés français pour une année donnée"""
-    if year is None:
-        year = datetime.now(PARIS_TZ).year
-    
-    holidays = []
-    for date, name in french_calendar.holidays(year):
-        holidays.append({
-            'date': date.strftime('%Y-%m-%d'),
-            'name': name
-        })
-    return holidays
+# Jours fériés français
+FRENCH_HOLIDAYS_2024 = [
+    '2024-01-01',  # Jour de l'An
+    '2024-04-01',  # Lundi de Pâques
+    '2024-05-01',  # Fête du Travail
+    '2024-05-08',  # Victoire 1945
+    '2024-05-09',  # Ascension
+    '2024-05-20',  # Pentecôte
+    '2024-07-14',  # Fête Nationale
+    '2024-08-15',  # Assomption
+    '2024-11-01',  # Toussaint
+    '2024-11-11',  # Armistice
+    '2024-12-25',  # Noël
+]
+
+# Actions non cotées ou problématiques
+DELISTED_STOCKS = ['EDF.PA', 'TOTF.PA', 'ACA.PA']  # Anciens symboles
 
 # Titre principal
 st.markdown("<h1 class='main-header'>🇫🇷 Tracker Bourse France - Euronext Paris en Temps Réel</h1>", unsafe_allow_html=True)
 
-# Bannière de fuseau horaire avec information sur l'heure d'été
+# Bannière de fuseau horaire
 current_time_paris = datetime.now(PARIS_TZ)
 current_time_ny = datetime.now(NY_TZ)
-current_time_london = datetime.now(LONDON_TZ)
-
-# Déterminer si l'heure d'été est active
-is_dst_paris = bool(current_time_paris.dst())
-is_dst_ny = bool(current_time_ny.dst())
-
-paris_offset = current_time_paris.strftime('%z')
-paris_offset_formatted = f"UTC{paris_offset[:3]}:{paris_offset[3:]}"
 
 st.markdown(f"""
 <div class='timezone-badge'>
     <b>🕐 Fuseaux horaires :</b><br>
-    🇫🇷 Paris : {current_time_paris.strftime('%H:%M:%S')} ({paris_offset_formatted}) {'(heure d\'été)' if is_dst_paris else '(heure d\'hiver)'}<br>
-    🇬🇧 Londres : {current_time_london.strftime('%H:%M:%S')}<br>
-    🇺🇸 New York : {current_time_ny.strftime('%H:%M:%S')} {'(heure d\'été)' if is_dst_ny else '(heure d\'hiver)'}<br>
-    📍 Toutes les heures sont affichées en heure locale de Paris
+    🇫🇷 Heure Paris : {current_time_paris.strftime('%H:%M:%S')} (UTC+2)<br>
+    🇺🇸 Heure NY : {current_time_ny.strftime('%H:%M:%S')} (UTC-4/UTC-5)<br>
+    📍 Tous les horaires affichés en heure de Paris (UTC+2)
 </div>
 """, unsafe_allow_html=True)
 
@@ -225,9 +223,8 @@ st.markdown("""
     <b>🇫🇷 Euronext Paris :</b> 
     <span class='cac40-badge'>CAC 40</span><br>
     - Actions françaises: suffixe .PA (ex: MC.PA, OR.PA, AIR.PA)<br>
-    - Horaires trading: Lundi-Vendredi 09:00 - 17:30 (heure de Paris)<br>
-    - Pré-ouverture: 07:15 - 09:00 | Après-clôture: 17:30 - 20:00 (heure de Paris)<br>
-    - Fuseau: UTC+1 (hiver) / UTC+2 (été)
+    - Horaires trading: Lundi-Vendredi 09:00 - 17:30 (heure Paris)<br>
+    - Pré-ouverture: 07:15 - 09:00 | Après-clôture: 17:30 - 20:00
 </div>
 """, unsafe_allow_html=True)
 
@@ -244,30 +241,53 @@ with st.sidebar:
          "📧 Notifications email",
          "📤 Export des données",
          "🤖 Prédictions ML",
-         "🇫🇷 Indices CAC 40",
-         "📅 Calendrier boursier"]
+         "🇫🇷 Indices CAC 40"]
     )
     
     st.markdown("---")
     
     # Configuration commune
     st.subheader("⚙️ Configuration")
-    st.caption(f"🕐 Heure actuelle: {current_time_paris.strftime('%H:%M:%S')} (Paris)")
+    st.caption(f"🕐 Fuseau : Heure de Paris (UTC+2)")
     
-    # Liste des symboles
-    default_symbols = ["MC.PA", "OR.PA", "AIR.PA", "BNP.PA", "SAN.PA"]
+    # Liste des symboles avec note pour EDF
+    symbol_options = st.session_state.watchlist + ["Autre..."]
     
     # Sélection du symbole principal
     symbol = st.selectbox(
         "Symbole principal",
-        options=st.session_state.watchlist + ["Autre..."],
+        options=symbol_options,
         index=0
     )
     
     if symbol == "Autre...":
         symbol = st.text_input("Entrer un symbole", value="MC.PA").upper()
-        if symbol and symbol not in st.session_state.watchlist:
-            st.session_state.watchlist.append(symbol)
+        
+        # Vérifier si le symbole est valide
+        if symbol in DELISTED_STOCKS:
+            st.warning(f"⚠️ {symbol} n'est plus coté en bourse. Utilisez plutôt TTE.PA pour TotalEnergies ou AI.PA pour Air Liquide.")
+        
+        if symbol and symbol not in st.session_state.watchlist and symbol not in DELISTED_STOCKS:
+            # Tester si le symbole est valide
+            try:
+                test_ticker = yf.Ticker(symbol)
+                test_hist = test_ticker.history(period='1d')
+                if not test_hist.empty:
+                    st.session_state.watchlist.append(symbol)
+                else:
+                    st.error(f"❌ {symbol} n'est pas un symbole valide ou n'a pas de données disponibles")
+            except:
+                st.error(f"❌ Erreur lors de la validation de {symbol}")
+    
+    # Note sur les symboles obsolètes
+    with st.expander("📌 Symboles mis à jour"):
+        st.markdown("""
+        **Anciens vs Nouveaux symboles:**
+        - ❌ ~~EDF.PA~~ → Non coté (nationalisé en 2023)
+        - ❌ ~~TOTF.PA~~ → ✅ TTE.PA (TotalEnergies)
+        - ❌ ~~ACA.PA~~ → ✅ AC.PA (Crédit Agricole) 
+        - ❌ ~~FTE.PA~~ → ✅ ORAN.PA (Orange)
+        """)
     
     # Note sur les suffixes
     st.caption("""
@@ -276,7 +296,6 @@ with st.sidebar:
     - .AS: Amsterdam
     - .BR: Bruxelles
     - .L: Londres
-    - .MI: Milan
     """)
     
     # Période et intervalle
@@ -312,11 +331,23 @@ with st.sidebar:
             step=5
         )
 
-# Fonctions utilitaires améliorées
+# Fonctions utilitaires
 @st.cache_data(ttl=300)
 def load_stock_data(symbol, period, interval):
-    """Charge les données boursières avec gestion des fuseaux horaires"""
+    """Charge les données boursières"""
     try:
+        # Vérifier si le symbole est dans la liste des actions non cotées
+        if symbol in DELISTED_STOCKS:
+            st.warning(f"⚠️ {symbol} n'est plus coté en bourse. Voici les alternatives:")
+            alternatives = {
+                'EDF.PA': 'Nationalisé en 2023 - Plus disponible',
+                'TOTF.PA': 'Utilisez TTE.PA (TotalEnergies)',
+                'ACA.PA': 'Utilisez AC.PA (Crédit Agricole)'
+            }
+            if symbol in alternatives:
+                st.info(alternatives[symbol])
+            return None, None
+        
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period, interval=interval)
         info = ticker.info
@@ -324,10 +355,8 @@ def load_stock_data(symbol, period, interval):
         # Convertir l'index en heure de Paris
         if not hist.empty:
             if hist.index.tz is None:
-                # Si pas de fuseau, supposer UTC et convertir
                 hist.index = hist.index.tz_localize('UTC').tz_convert(PARIS_TZ)
             else:
-                # Convertir le fuseau existant vers Paris
                 hist.index = hist.index.tz_convert(PARIS_TZ)
         
         return hist, info
@@ -337,19 +366,27 @@ def load_stock_data(symbol, period, interval):
 
 def get_exchange(symbol):
     """Détermine l'échange pour un symbole"""
-    for suffix, exchange in FRENCH_EXCHANGES.items():
-        if symbol.endswith(suffix) and suffix:
-            return exchange
-    return 'US/Global'
+    if symbol.endswith('.PA'):
+        return 'Euronext Paris'
+    elif symbol.endswith('.AS'):
+        return 'Euronext Amsterdam'
+    elif symbol.endswith('.BR'):
+        return 'Euronext Brussels'
+    elif symbol.endswith('.L'):
+        return 'London Stock Exchange'
+    elif symbol.endswith('.MI'):
+        return 'Borsa Italiana'
+    elif symbol.endswith('.DE'):
+        return 'Deutsche Börse'
+    else:
+        return 'US/Global'
 
 def get_currency(symbol):
     """Détermine la devise pour un symbole"""
-    if any(symbol.endswith(suffix) for suffix in ['.PA', '.AS', '.BR', '.MI']):
+    if any(symbol.endswith(suffix) for suffix in ['.PA', '.AS', '.BR', '.MI', '.DE']):
         return 'EUR'
     elif symbol.endswith('.L'):
         return 'GBP'
-    elif symbol.endswith('.DE'):
-        return 'EUR'
     else:
         return 'USD'
 
@@ -404,48 +441,32 @@ def check_price_alerts(current_price, symbol):
     return triggered
 
 def get_market_status():
-    """Détermine le statut des marchés français avec gestion des jours fériés"""
+    """Détermine le statut des marchés français"""
     paris_now = datetime.now(PARIS_TZ)
     paris_hour = paris_now.hour
     paris_minute = paris_now.minute
     paris_weekday = paris_now.weekday()
-    paris_date = paris_now.date()
+    paris_date = paris_now.strftime('%Y-%m-%d')
     
-    # Weekend (lundi=0, dimanche=6)
-    if paris_weekday >= 5:  # Samedi ou dimanche
-        return "Fermé (weekend)", "🔴", "Weekend"
+    # Weekend (samedi = 5, dimanche = 6)
+    if paris_weekday >= 5:
+        return "Fermé (weekend)", "🔴"
     
-    # Vérifier si c'est un jour férié
-    if french_calendar.is_working_day(paris_date) is False:
-        # Trouver le nom du jour férié
-        holidays = french_calendar.holidays(paris_now.year)
-        holiday_name = next((name for date, name in holidays if date == paris_date), "Jour férié")
-        return f"Fermé ({holiday_name})", "🔴", holiday_name
+    # Jours fériés
+    if paris_date in FRENCH_HOLIDAYS_2024:
+        return "Fermé (jour férié)", "🔴"
     
-    # Horaires Euronext Paris
-    # Pré-ouverture: 07:15 - 09:00
-    if 7 <= paris_hour < 9:
-        if paris_hour == 7 and paris_minute < 15:
-            return "Fermé (avant pré-ouverture)", "⚫", "Hors marché"
-        return "Pré-ouverture", "🟡", "Pré-ouverture"
-    
-    # Session continue: 09:00 - 17:30
-    elif 9 <= paris_hour < 17:
-        return "Ouvert", "🟢", "Session continue"
+    # Horaires Euronext: 09:00 - 17:30
+    if 9 <= paris_hour < 17:
+        return "Ouvert", "🟢"
     elif paris_hour == 17 and paris_minute <= 30:
-        return "Ouvert", "🟢", "Session continue"
-    
-    # Après-clôture: 17:30 - 20:00
+        return "Ouvert", "🟢"
+    elif 7 <= paris_hour < 9:
+        return "Pré-ouverture", "🟡"
     elif 17 < paris_hour < 20:
-        if paris_hour == 17 and paris_minute > 30:
-            return "Après-clôture", "🟡", "Après-clôture"
-        return "Après-clôture", "🟡", "Après-clôture"
-    elif paris_hour == 20 and paris_minute == 0:
-        return "Fermé", "⚫", "Hors marché"
-    
-    # Hors marché
+        return "Après-clôture", "🟡"
     else:
-        return "Fermé", "⚫", "Hors marché"
+        return "Fermé", "🔴"
 
 def safe_get_metric(hist, metric, index=-1):
     """Récupère une métrique en toute sécurité"""
@@ -462,6 +483,18 @@ hist, info = load_stock_data(symbol, period, interval)
 # Vérification si les données sont disponibles
 if hist is None or hist.empty:
     st.warning(f"⚠️ Impossible de charger les données pour {symbol}. Vérifiez que le symbole est correct.")
+    
+    # Suggestions pour les symboles courants
+    suggestions = {
+        'EDF.PA': '🔍 EDF a été nationalisé en 2023 et n\'est plus coté en bourse.',
+        'TOTF.PA': '🔍 Utilisez TTE.PA pour TotalEnergies',
+        'ACA.PA': '🔍 Utilisez AC.PA pour Crédit Agricole',
+        'FTE.PA': '🔍 Utilisez ORAN.PA pour Orange',
+    }
+    
+    if symbol in suggestions:
+        st.info(suggestions[symbol])
+    
     current_price = 0
 else:
     current_price = safe_get_metric(hist, 'Close')
@@ -480,7 +513,7 @@ else:
             <p><b>Symbole:</b> {symbol}</p>
             <p><b>Prix actuel:</b> {format_currency(current_price, symbol)}</p>
             <p><b>Condition:</b> {alert['condition']} {format_currency(alert['price'], symbol)}</p>
-            <p><b>Date:</b> {datetime.now(PARIS_TZ).strftime('%Y-%m-%d %H:%M:%S')} (heure de Paris)</p>
+            <p><b>Date:</b> {datetime.now(PARIS_TZ).strftime('%Y-%m-%d %H:%M:%S')} (heure Paris)</p>
             """
             send_email_alert(subject, body, st.session_state.email_config['email'])
         
@@ -492,30 +525,9 @@ else:
 # SECTION 1: TABLEAU DE BORD
 # ============================================================================
 if menu == "📈 Tableau de bord":
-    # Statut du marché avec détails
-    market_status, market_icon, market_detail = get_market_status()
-    
-    col_status, col_detail = st.columns([1, 2])
-    with col_status:
-        st.info(f"{market_icon} Marché Euronext Paris: **{market_status}**")
-    with col_detail:
-        if market_detail != "Hors marché":
-            st.caption(f"Phase actuelle: {market_detail}")
-    
-    # Prochains jours fériés
-    next_holidays = []
-    today = datetime.now(PARIS_TZ).date()
-    for i in range(30):  # Vérifier les 30 prochains jours
-        check_date = today + timedelta(days=i)
-        if not french_calendar.is_working_day(check_date):
-            holidays = french_calendar.holidays(check_date.year)
-            holiday_name = next((name for date, name in holidays if date == check_date), "Jour férié")
-            next_holidays.append((check_date, holiday_name))
-    
-    if next_holidays:
-        with st.expander("📅 Prochains jours fériés"):
-            for date, name in next_holidays[:3]:  # Afficher les 3 prochains
-                st.markdown(f"<div class='holiday-info'>📌 {date.strftime('%d/%m/%Y')} : {name}</div>", unsafe_allow_html=True)
+    # Statut du marché
+    market_status, market_icon = get_market_status()
+    st.info(f"{market_icon} Marché Euronext Paris: {market_status}")
     
     if hist is not None and not hist.empty:
         # Métriques principales
@@ -557,7 +569,7 @@ if menu == "📈 Tableau de bord":
             st.metric("Volume", volume_formatted)
         
         # Dernière mise à jour
-        st.caption(f"Dernière mise à jour: {hist.index[-1].strftime('%Y-%m-%d %H:%M:%S')} (heure de Paris)")
+        st.caption(f"Dernière mise à jour: {hist.index[-1].strftime('%Y-%m-%d %H:%M:%S')} (heure Paris)")
         
         # Graphique principal
         st.subheader("📉 Évolution du prix")
@@ -619,7 +631,7 @@ if menu == "📈 Tableau de bord":
         if interval in ["1m", "5m", "15m", "30m", "1h"] and not hist.empty:
             last_date = hist.index[-1].date()
             try:
-                # Créer les datetime avec le bon fuseau
+                # Pré-ouverture
                 pre_open = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("07:15", "%H:%M").time()))
                 market_open = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("09:00", "%H:%M").time()))
                 market_close = PARIS_TZ.localize(datetime.combine(last_date, datetime.strptime("17:30", "%H:%M").time()))
@@ -633,8 +645,7 @@ if menu == "📈 Tableau de bord":
                     opacity=0.1,
                     layer="below",
                     line_width=0,
-                    annotation_text="Pré-ouverture",
-                    annotation_position="top left"
+                    annotation_text="Pré-ouverture"
                 )
                 
                 # Zone trading principal
@@ -645,8 +656,7 @@ if menu == "📈 Tableau de bord":
                     opacity=0.1,
                     layer="below",
                     line_width=0,
-                    annotation_text="Session principale",
-                    annotation_position="top left"
+                    annotation_text="Session principale"
                 )
                 
                 # Zone après-clôture
@@ -657,14 +667,13 @@ if menu == "📈 Tableau de bord":
                     opacity=0.1,
                     layer="below",
                     line_width=0,
-                    annotation_text="Après-clôture",
-                    annotation_position="top left"
+                    annotation_text="Après-clôture"
                 )
-            except Exception as e:
+            except:
                 pass
         
         fig.update_layout(
-            title=f"{symbol} - {period} (heure de Paris)",
+            title=f"{symbol} - {period} (heure Paris)",
             yaxis_title=f"Prix ({'€' if currency=='EUR' else '£' if currency=='GBP' else '$'})",
             yaxis2=dict(
                 title="Volume",
@@ -672,7 +681,7 @@ if menu == "📈 Tableau de bord":
                 side='right',
                 showgrid=False
             ),
-            xaxis_title="Date (heure de Paris)",
+            xaxis_title="Date (heure Paris)",
             height=600,
             hovermode='x unified',
             template='plotly_white'
@@ -705,23 +714,16 @@ if menu == "📈 Tableau de bord":
                     else:
                         st.write("**Capitalisation :** N/A")
                     
-                    # P/E ratio
-                    pe = info.get('trailingPE', info.get('forwardPE', 'N/A'))
-                    st.write(f"**P/E :** {pe if pe != 'N/A' else 'N/A'}")
-                    
-                    # Dividende
-                    div_yield = info.get('dividendYield', 0)
-                    if div_yield and div_yield > 0:
-                        st.write(f"**Dividende :** {div_yield*100:.2f}%")
-                    else:
-                        st.write("**Dividende :** N/A")
-                    
+                    st.write(f"**P/E :** {info.get('trailingPE', 'N/A')}")
+                    st.write(f"**Dividende :** {info.get('dividendYield', 0)*100:.2f}%" if info.get('dividendYield') else "**Dividende :** N/A")
                     st.write(f"**Beta :** {info.get('beta', 'N/A')}")
                     
-                    # Informations spécifiques France
-                    if 'sector' in info and info['sector'] in ['Financial Services', 'Banks']:
-                        cac40_tickers = ['BNP.PA', 'ACA.PA', 'GLE.PA', 'MC.PA', 'OR.PA', 'AIR.PA', 'SAN.PA', 'TTE.PA', 'SU.PA']
-                        st.write(f"**Membre CAC 40 :** {'Oui' if symbol in cac40_tickers else 'Non'}")
+                    # CAC 40 membership
+                    cac40_tickers = ['MC.PA', 'OR.PA', 'AIR.PA', 'SAN.PA', 'TTE.PA', 'SU.PA', 
+                                   'BNP.PA', 'CAP.PA', 'DSY.PA', 'ENGI.PA', 'ORAN.PA', 'VIV.PA',
+                                   'VIE.PA', 'RNO.PA', 'STLAP.PA', 'AI.PA', 'KER.PA', 'CDI.PA',
+                                   'DG.PA', 'LR.PA', 'EL.PA', 'BN.PA', 'PUB.PA', 'SGO.PA', 'ML.PA']
+                    st.write(f"**Membre CAC 40 :** {'Oui' if symbol in cac40_tickers else 'Non'}")
             else:
                 st.write("Informations non disponibles")
     else:
@@ -740,19 +742,20 @@ elif menu == "💰 Portefeuille virtuel":
         with st.form("add_position"):
             symbol_pf = st.text_input("Symbole", value="MC.PA").upper()
             
+            # Vérifier si le symbole est valide
+            if symbol_pf in DELISTED_STOCKS:
+                st.warning(f"⚠️ {symbol_pf} n'est plus coté en bourse!")
+            
             # Aide sur les suffixes
             st.caption("""
             Suffixes Euronext:
             - .PA: Paris
             - .AS: Amsterdam
             - .BR: Bruxelles
-            - .MI: Milan
             """)
             
             shares = st.number_input("Nombre d'actions", min_value=0.01, step=0.01, value=1.0)
-            buy_price = st.number_input("Prix d'achat", min_value=0.01, step=0.01, value=100.0)
-            currency_pf = get_currency(symbol_pf)
-            st.caption(f"Devise: {currency_pf}")
+            buy_price = st.number_input("Prix d'achat (€)", min_value=0.01, step=0.01, value=100.0)
             
             if st.form_submit_button("Ajouter au portefeuille"):
                 if symbol_pf and shares > 0:
@@ -776,19 +779,19 @@ elif menu == "💰 Portefeuille virtuel":
             total_value_usd = 0
             total_cost_usd = 0
             
-            # Taux de conversion approximatifs
-            eur_usd_rate = 1.08
-            gbp_usd_rate = 1.25
-            gbp_eur_rate = 1.16
-            
             for symbol_pf, positions in st.session_state.portfolio.items():
                 try:
-                    ticker = yf.Ticker(symbol_pf)
-                    hist = ticker.history(period='1d')
-                    if not hist.empty:
-                        current = hist['Close'].iloc[-1]
-                    else:
+                    # Vérifier si le symbole est toujours coté
+                    if symbol_pf in DELISTED_STOCKS:
+                        st.warning(f"⚠️ {symbol_pf} n'est plus coté - valeur estimée à 0")
                         current = 0
+                    else:
+                        ticker = yf.Ticker(symbol_pf)
+                        hist = ticker.history(period='1d')
+                        if not hist.empty:
+                            current = hist['Close'].iloc[-1]
+                        else:
+                            current = 0
                     
                     exchange = get_exchange(symbol_pf)
                     currency = get_currency(symbol_pf)
@@ -801,33 +804,29 @@ elif menu == "💰 Portefeuille virtuel":
                         profit = value - cost
                         profit_pct = (profit / cost * 100) if cost > 0 else 0
                         
-                        # Conversion en EUR pour les totaux
                         if currency == 'EUR':
                             total_cost_eur += cost
                             total_value_eur += value
-                            total_cost_usd += cost * eur_usd_rate
-                            total_value_usd += value * eur_usd_rate
-                        elif currency == 'GBP':
-                            total_cost_eur += cost * gbp_eur_rate
-                            total_value_eur += value * gbp_eur_rate
-                            total_cost_usd += cost * gbp_usd_rate
-                            total_value_usd += value * gbp_usd_rate
-                        else:  # USD
+                            # Conversion EUR/USD approximative
+                            usd_rate = 1.08
+                            total_cost_usd += cost * usd_rate
+                            total_value_usd += value * usd_rate
+                        else:
                             total_cost_usd += cost
                             total_value_usd += value
-                            total_cost_eur += cost / eur_usd_rate
-                            total_value_eur += value / eur_usd_rate
                         
+                        status = "✅" if current > 0 else "❌"
                         portfolio_data.append({
                             'Symbole': symbol_pf,
+                            'Statut': status,
                             'Marché': exchange,
                             'Devise': currency,
                             'Actions': shares,
-                            "Prix d'achat": f"{buy_price:.2f}",
-                            'Prix actuel': f"{current:.2f}",
-                            'Valeur': f"{value:.2f}",
-                            'Profit': f"{profit:.2f}",
-                            'Profit %': f"{profit_pct:.1f}%"
+                            "Prix d'achat": format_currency(buy_price, symbol_pf),
+                            'Prix actuel': format_currency(current, symbol_pf) if current > 0 else "N/A",
+                            'Valeur': format_currency(value, symbol_pf) if value > 0 else "0",
+                            'Profit': format_currency(profit, symbol_pf) if profit != 0 else "0",
+                            'Profit %': f"{profit_pct:.1f}%" if profit != 0 else "N/A"
                         })
                 except Exception as e:
                     st.warning(f"Impossible de charger {symbol_pf}")
@@ -863,27 +862,18 @@ elif menu == "💰 Portefeuille virtuel":
                 st.dataframe(df_portfolio, use_container_width=True)
                 
                 # Graphique de répartition
-                if len(portfolio_data) > 0:
-                    try:
-                        # Convertir les valeurs en nombres
-                        values = []
-                        for p in portfolio_data:
-                            val_str = p['Valeur']
-                            val_float = float(val_str)
-                            if p['Devise'] == 'GBP':
-                                val_float *= gbp_eur_rate
-                            elif p['Devise'] == 'USD':
-                                val_float /= eur_usd_rate
-                            values.append(val_float)
-                        
+                try:
+                    # Filtrer les valeurs > 0
+                    valid_data = [p for p in portfolio_data if '€' in p['Valeur'] or '$' in p['Valeur']]
+                    if valid_data:
                         fig_pie = px.pie(
-                            names=[p['Symbole'] for p in portfolio_data],
-                            values=values,
-                            title="Répartition du portefeuille (en EUR)"
+                            names=[p['Symbole'] for p in valid_data],
+                            values=[float(p['Valeur'].replace('€', '').replace('$', '').replace('£', '').replace(',', '')) for p in valid_data],
+                            title="Répartition du portefeuille"
                         )
                         st.plotly_chart(fig_pie)
-                    except Exception as e:
-                        st.warning(f"Impossible de générer le graphique: {e}")
+                except:
+                    st.warning("Impossible de générer le graphique")
                 
                 # Bouton pour vider le portefeuille
                 if st.button("🗑️ Vider le portefeuille"):
@@ -906,6 +896,11 @@ elif menu == "🔔 Alertes de prix":
         st.markdown("### ➕ Créer une nouvelle alerte")
         with st.form("new_alert"):
             alert_symbol = st.text_input("Symbole", value=symbol if symbol else "MC.PA").upper()
+            
+            # Vérifier si le symbole est valide
+            if alert_symbol in DELISTED_STOCKS:
+                st.warning(f"⚠️ {alert_symbol} n'est plus coté en bourse!")
+            
             exchange = get_exchange(alert_symbol)
             st.caption(f"Marché: {exchange}")
             
@@ -941,10 +936,13 @@ elif menu == "🔔 Alertes de prix":
         if st.session_state.price_alerts:
             for i, alert in enumerate(st.session_state.price_alerts):
                 with st.container():
+                    # Vérifier si le symbole est toujours valide
+                    status = "⚠️" if alert['symbol'] in DELISTED_STOCKS else ""
+                    
                     st.markdown(f"""
                     <div class='alert-box alert-warning'>
-                        <b>{alert['symbol']}</b> - {alert['condition']} {format_currency(alert['price'], alert['symbol'])}<br>
-                        <small>Créée: {alert['created']} (heure de Paris) | {('Usage unique' if alert['one_time'] else 'Permanent')}</small>
+                        <b>{alert['symbol']} {status}</b> - {alert['condition']} {format_currency(alert['price'], alert['symbol'])}<br>
+                        <small>Créée: {alert['created']} (heure Paris) | {('Usage unique' if alert['one_time'] else 'Permanent')}</small>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -991,7 +989,7 @@ elif menu == "📧 Notifications email":
                 if test_email:
                     if send_email_alert(
                         "Test de notification",
-                        f"<h2>Test réussi !</h2><p>Votre configuration email fonctionne correctement !</p><p>Heure d'envoi: {datetime.now(PARIS_TZ).strftime('%Y-%m-%d %H:%M:%S')} (heure de Paris)</p>",
+                        f"<h2>Test réussi !</h2><p>Votre configuration email fonctionne correctement !</p><p>Heure d'envoi: {datetime.now(PARIS_TZ).strftime('%Y-%m-%d %H:%M:%S')} (heure Paris)</p>",
                         test_email
                     ):
                         st.success("Email de test envoyé !")
@@ -1015,7 +1013,7 @@ elif menu == "📤 Export des données":
             st.markdown("### 📊 Données historiques")
             # Afficher avec fuseau horaire
             display_hist = hist.copy()
-            display_hist.index = display_hist.index.strftime('%Y-%m-%d %H:%M:%S (heure de Paris)')
+            display_hist.index = display_hist.index.strftime('%Y-%m-%d %H:%M:%S (heure Paris)')
             st.dataframe(display_hist.tail(20))
             
             # Export CSV
@@ -1054,7 +1052,6 @@ elif menu == "📤 Export des données":
                 'currency': get_currency(symbol),
                 'last_update': datetime.now(PARIS_TZ).isoformat(),
                 'timezone': 'Europe/Paris',
-                'dst_active': bool(datetime.now(PARIS_TZ).dst()),
                 'current_price': float(current_price) if current_price else 0,
                 'statistics': {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in stats.items()},
                 'data': hist.reset_index().to_dict(orient='records')
@@ -1086,7 +1083,6 @@ elif menu == "🤖 Prédictions ML":
         - Élections et politique gouvernementale
         - Grèves et mouvements sociaux
         - Résultats trimestriels des entreprises du CAC 40
-        - Influence des marchés américains (ouverture à 15h30 heure de Paris)
         """)
         
         # Préparation des données
@@ -1163,8 +1159,8 @@ elif menu == "🤖 Prédictions ML":
             ))
         
         fig_pred.update_layout(
-            title=f"Prédictions pour {symbol} - {days_to_predict} jours (heure de Paris)",
-            xaxis_title="Date (heure de Paris)",
+            title=f"Prédictions pour {symbol} - {days_to_predict} jours (heure Paris)",
+            xaxis_title="Date (heure Paris)",
             yaxis_title=f"Prix ({'€' if get_currency(symbol)=='EUR' else '£' if get_currency(symbol)=='GBP' else '$'})",
             hovermode='x unified',
             template='plotly_white'
@@ -1175,7 +1171,7 @@ elif menu == "🤖 Prédictions ML":
         # Tableau des prédictions
         st.markdown("### 📋 Prédictions détaillées")
         pred_df = pd.DataFrame({
-            'Date (heure de Paris)': [d.strftime('%Y-%m-%d') for d in future_dates],
+            'Date (heure Paris)': [d.strftime('%Y-%m-%d') for d in future_dates],
             'Prix prédit': [format_currency(p, symbol) for p in predictions],
             'Variation %': [f"{(p/current_price - 1)*100:.2f}%" for p in predictions]
         })
@@ -1284,7 +1280,7 @@ elif menu == "🇫🇷 Indices CAC 40":
                 col_i2.metric("Variation", f"{index_change:.2f}")
                 col_i3.metric("Variation %", f"{index_change_pct:.2f}%", delta=f"{index_change_pct:.2f}%")
                 
-                st.caption(f"Dernière mise à jour: {index_hist.index[-1].strftime('%Y-%m-%d %H:%M:%S')} (heure de Paris)")
+                st.caption(f"Dernière mise à jour: {index_hist.index[-1].strftime('%Y-%m-%d %H:%M:%S')} (heure Paris)")
                 
                 # Graphique de l'indice
                 fig_index = go.Figure()
@@ -1318,8 +1314,8 @@ elif menu == "🇫🇷 Indices CAC 40":
                     ))
                 
                 fig_index.update_layout(
-                    title=f"Évolution - {perf_period} (heure de Paris)",
-                    xaxis_title="Date (heure de Paris)",
+                    title=f"Évolution - {perf_period} (heure Paris)",
+                    xaxis_title="Date (heure Paris)",
                     yaxis_title="Points",
                     height=500,
                     hovermode='x unified',
@@ -1377,110 +1373,19 @@ elif menu == "🇫🇷 Indices CAC 40":
         - **CAC Small** : Petites capitalisations
         - **CAC All-Tradable** : Ensemble des valeurs cotées
         
-        **Pondération du CAC 40 (principales valeurs - approximatif):**
+        **Pondération du CAC 40 (principales valeurs):**
         - LVMH (MC.PA) ~ 12%
         - TotalEnergies (TTE.PA) ~ 10%
         - Sanofi (SAN.PA) ~ 8%
         - L'Oréal (OR.PA) ~ 7%
         - Schneider Electric (SU.PA) ~ 6%
-        - Hermès (RMS.PA) ~ 5%
         
-        **Horaires de trading (heure de Paris):**
+        **Horaires de trading (heure Paris):**
         - Pré-ouverture: 07:15 - 09:00
         - Session continue: 09:00 - 17:30
         - Après-clôture: 17:30 - 20:00
         - Fermé les week-ends et jours fériés
-        
-        **Fuseau horaire:**
-        - UTC+1 (hiver) / UTC+2 (été)
-        - Passage à l'heure d'été: dernier dimanche de mars
-        - Passage à l'heure d'hiver: dernier dimanche d'octobre
         """)
-
-# ============================================================================
-# SECTION 8: CALENDRIER BOURSIER
-# ============================================================================
-elif menu == "📅 Calendrier boursier":
-    st.subheader("📅 Calendrier boursier français")
-    
-    # Obtenir les jours fériés pour l'année en cours
-    current_year = datetime.now(PARIS_TZ).year
-    next_year = current_year + 1
-    
-    holidays_current = get_french_holidays(current_year)
-    holidays_next = get_french_holidays(next_year)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown(f"### 📆 Jours fériés {current_year}")
-        if holidays_current:
-            for holiday in holidays_current:
-                date_obj = datetime.strptime(holiday['date'], '%Y-%m-%d').date()
-                st.markdown(f"📌 {date_obj.strftime('%d/%m/%Y')} : **{holiday['name']}**")
-        else:
-            st.info(f"Aucun jour férié trouvé pour {current_year}")
-    
-    with col2:
-        st.markdown(f"### 📆 Jours fériés {next_year}")
-        if holidays_next:
-            for holiday in holidays_next:
-                date_obj = datetime.strptime(holiday['date'], '%Y-%m-%d').date()
-                st.markdown(f"📌 {date_obj.strftime('%d/%m/%Y')} : **{holiday['name']}**")
-        else:
-            st.info(f"Aucun jour férié trouvé pour {next_year}")
-    
-    # Statistiques mensuelles
-    st.markdown("### 📊 Statistiques mensuelles")
-    
-    # Mois avec le plus de jours ouvrés
-    months = []
-    for month in range(1, 13):
-        month_name = calendar.month_name[month]
-        working_days = 0
-        for day in range(1, 32):
-            try:
-                date = datetime(current_year, month, day).date()
-                if french_calendar.is_working_day(date):
-                    working_days += 1
-            except ValueError:
-                continue
-        months.append((month_name, working_days))
-    
-    # Créer un graphique des jours ouvrés par mois
-    fig_months = go.Figure()
-    fig_months.add_trace(go.Bar(
-        x=[m[0] for m in months],
-        y=[m[1] for m in months],
-        marker_color='#0055A4',
-        text=[m[1] for m in months],
-        textposition='auto',
-    ))
-    
-    fig_months.update_layout(
-        title=f"Jours ouvrés par mois - {current_year}",
-        xaxis_title="Mois",
-        yaxis_title="Nombre de jours",
-        height=400,
-        template='plotly_white'
-    )
-    
-    st.plotly_chart(fig_months, use_container_width=True)
-    
-    # Périodes de publication des résultats
-    st.markdown("### 📈 Périodes de publication des résultats")
-    
-    earnings_periods = {
-        'T1 (Résultats Q1)': 'Avril - Mai',
-        'T2 (Résultats semestriels)': 'Juillet - Août',
-        'T3 (Résultats 9 mois)': 'Octobre - Novembre',
-        'T4 (Résultats annuels)': 'Janvier - Février',
-        'Assemblées générales': 'Avril - Juin',
-        'Dividendes (paiement)': 'Mai - Juillet'
-    }
-    
-    for period, dates in earnings_periods.items():
-        st.markdown(f"📊 **{period}** : {dates}")
 
 # ============================================================================
 # WATCHLIST ET DERNIÈRE MISE À JOUR
@@ -1491,18 +1396,21 @@ col_w1, col_w2 = st.columns([3, 1])
 with col_w1:
     st.subheader("📋 Watchlist France")
     
-    # Organiser la watchlist par marché
-    paris_stocks = [s for s in st.session_state.watchlist if s.endswith('.PA')]
-    amsterdam_stocks = [s for s in st.session_state.watchlist if s.endswith('.AS')]
-    brussels_stocks = [s for s in st.session_state.watchlist if s.endswith('.BR')]
-    london_stocks = [s for s in st.session_state.watchlist if s.endswith('.L')]
-    milan_stocks = [s for s in st.session_state.watchlist if s.endswith('.MI')]
-    us_stocks = [s for s in st.session_state.watchlist if not any(s.endswith(x) for x in ['.PA', '.AS', '.BR', '.L', '.MI'])]
+    # Filtrer les symboles valides
+    valid_watchlist = [s for s in st.session_state.watchlist if s not in DELISTED_STOCKS]
     
-    tabs = st.tabs(["Paris", "Amsterdam", "Bruxelles", "Londres", "Milan", "US"])
+    # Organiser la watchlist par marché
+    paris_stocks = [s for s in valid_watchlist if s.endswith('.PA')]
+    amsterdam_stocks = [s for s in valid_watchlist if s.endswith('.AS')]
+    brussels_stocks = [s for s in valid_watchlist if s.endswith('.BR')]
+    london_stocks = [s for s in valid_watchlist if s.endswith('.L')]
+    us_stocks = [s for s in valid_watchlist if not any(s.endswith(x) for x in ['.PA', '.AS', '.BR', '.L'])]
+    
+    tabs = st.tabs(["Paris", "Amsterdam", "Bruxelles", "Londres", "US"])
     
     with tabs[0]:
         if paris_stocks:
+            # Afficher en grille de 4 colonnes
             cols_per_row = 4
             for i in range(0, len(paris_stocks), cols_per_row):
                 cols = st.columns(min(cols_per_row, len(paris_stocks) - i))
@@ -1510,22 +1418,28 @@ with col_w1:
                     with cols[j]:
                         try:
                             ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='1d')
-                            if not hist.empty:
+                            hist = ticker.history(period='2d')  # 2 jours pour avoir la variation
+                            if not hist.empty and len(hist) >= 2:
                                 price = hist['Close'].iloc[-1]
-                                prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else price
+                                prev_close = hist['Close'].iloc[-2]
                                 change = price - prev_close
-                                change_pct = (change / prev_close * 100) if prev_close != 0 else 0
-                                delta_color = "normal" if change >= 0 else "inverse"
+                                change_pct = (change / prev_close * 100)
+                                
+                                # Nom simplifié (sans .PA)
+                                display_name = sym.replace('.PA', '')
+                                
                                 st.metric(
-                                    sym.replace('.PA', ''),
+                                    display_name,
                                     f"€{price:.2f}",
                                     delta=f"{change:.2f} ({change_pct:.1f}%)",
                                     delta_color="normal" if change >= 0 else "inverse"
                                 )
+                            elif not hist.empty:
+                                price = hist['Close'].iloc[-1]
+                                st.metric(sym.replace('.PA', ''), f"€{price:.2f}")
                             else:
                                 st.metric(sym.replace('.PA', ''), "N/A")
-                        except:
+                        except Exception as e:
                             st.metric(sym.replace('.PA', ''), "Err")
         else:
             st.info("Aucune action Paris")
@@ -1591,26 +1505,6 @@ with col_w1:
             st.info("Aucune action Londres")
     
     with tabs[4]:
-        if milan_stocks:
-            cols_per_row = 4
-            for i in range(0, len(milan_stocks), cols_per_row):
-                cols = st.columns(min(cols_per_row, len(milan_stocks) - i))
-                for j, sym in enumerate(milan_stocks[i:i+cols_per_row]):
-                    with cols[j]:
-                        try:
-                            ticker = yf.Ticker(sym)
-                            hist = ticker.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                st.metric(sym.replace('.MI', ''), f"€{price:.2f}")
-                            else:
-                                st.metric(sym.replace('.MI', ''), "N/A")
-                        except:
-                            st.metric(sym.replace('.MI', ''), "Err")
-        else:
-            st.info("Aucune action Milan")
-    
-    with tabs[5]:
         if us_stocks:
             cols_per_row = 4
             for i in range(0, len(us_stocks), cols_per_row):
@@ -1634,17 +1528,24 @@ with col_w2:
     # Heures actuelles
     paris_time = datetime.now(PARIS_TZ)
     ny_time = datetime.now(NY_TZ)
-    london_time = datetime.now(LONDON_TZ)
     
     st.caption(f"🇫🇷 Paris: {paris_time.strftime('%H:%M:%S')}")
-    st.caption(f"🇬🇧 Londres: {london_time.strftime('%H:%M:%S')}")
     st.caption(f"🇺🇸 NY: {ny_time.strftime('%H:%M:%S')}")
     
     # Statut des marchés
-    market_status, market_icon, _ = get_market_status()
+    market_status, market_icon = get_market_status()
     st.caption(f"{market_icon} Euronext: {market_status}")
     
     st.caption(f"Dernière MAJ: {paris_time.strftime('%H:%M:%S')}")
+    
+    # Note sur les symboles obsolètes
+    with st.expander("📌 Actions non cotées"):
+        st.markdown("""
+        **Actions retirées de la cote:**
+        - ❌ EDF.PA (nationalisé en 2023)
+        - ❌ TOTF.PA (renommé TTE.PA)
+        - ❌ ACA.PA (renommé AC.PA)
+        """)
     
     if auto_refresh and hist is not None and not hist.empty:
         time.sleep(refresh_rate)
@@ -1652,25 +1553,11 @@ with col_w2:
 
 # Footer
 st.markdown("---")
-# Déterminer le fuseau actuel
-current_tz_offset = datetime.now(PARIS_TZ).strftime('%z')
-tz_display = f"UTC{current_tz_offset[:3]}:{current_tz_offset[3:]}"
-dst_status = "Heure d'été" if datetime.now(PARIS_TZ).dst() else "Heure d'hiver"
-
 st.markdown(
-    f"<p style='text-align: center; color: gray; font-size: 0.8rem;'>"
-    f"🇫🇷 Tracker Bourse France - Euronext Paris | Données fournies par yfinance | "
-    f"⚠️ Données avec délai possible | 🕐 {tz_display} ({dst_status})<br>"
-    f"📅 Jours fériés calculés automatiquement | Dernière mise à jour: {datetime.now(PARIS_TZ).strftime('%d/%m/%Y %H:%M:%S')}"
-    f"</p>",
+    "<p style='text-align: center; color: gray; font-size: 0.8rem;'>"
+    "🇫🇷 Tracker Bourse France - Euronext Paris | Données fournies par yfinance | "
+    "⚠️ Données avec délai possible | 🕐 Heure de Paris (UTC+2)<br>"
+    "❌ EDF.PA n'est plus coté (nationalisé en 2023) | ✅ Utilisez TTE.PA pour TotalEnergies"
+    "</p>",
     unsafe_allow_html=True
 )
-
-# Note sur l'installation de workalendar
-if menu == "📅 Calendrier boursier":
-    st.sidebar.markdown("---")
-    st.sidebar.info(
-        "📦 Pour une meilleure gestion des jours fériés, "
-        "installez la bibliothèque workalendar:\n"
-        "`pip install workalendar`"
-    )
